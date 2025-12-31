@@ -1,0 +1,33 @@
+# Federation Hub Dockerfile
+# Provides multi-tenant agent synchronization for Oceanic platform
+#
+# NOTE: docker-compose mounts ./packages/oceanic-agentic:/app so we need
+# to work with the source structure directly, not copy files.
+
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install dependencies for building native modules
+RUN apk add --no-cache python3 make g++ curl
+
+# Install ts-node and typescript globally for development mode
+RUN npm install -g ts-node typescript tsx
+
+# Create data directory for SQLite
+RUN mkdir -p /data
+
+# Health check endpoint
+EXPOSE 8443
+EXPOSE 8444
+
+# Note: Dependencies are installed via volume mount + entrypoint
+# The entrypoint script will:
+# 1. cd to agentic-flow
+# 2. npm install if needed
+# 3. Run the hub with ts-node
+
+# Note: Dependencies are installed via volume mount + entrypoint
+# We need to rebuild native modules (better-sqlite3) for Alpine Linux
+# since the host's node_modules contains macOS-compiled binaries
+CMD ["sh", "-c", "cd /app/agentic-flow && npm install --include=dev 2>/dev/null && npm rebuild better-sqlite3 2>&1; cd /app && tsx --tsconfig /app/tsconfig.json /app/agentic-flow/docker/federation-test/run-hub.ts"]

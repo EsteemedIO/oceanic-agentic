@@ -1,0 +1,50 @@
+# QUIC Transport Dockerfile
+# Provides low-latency, multiplexed agent-to-agent communication
+# with 0-RTT reconnection for ephemeral pod coordination
+
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install dependencies for building native modules and QUIC support
+RUN apk add --no-cache python3 make g++ curl openssl
+
+# Copy package files
+COPY agentic-flow/package*.json ./
+
+# Install dependencies
+RUN npm ci --only=production
+
+# Copy source code
+COPY agentic-flow/src ./src
+COPY agentic-flow/tsconfig.json ./tsconfig.json
+
+# Build TypeScript
+RUN npm run build || echo "Build optional - running with ts-node"
+
+# Install ts-node for development
+RUN npm install -g ts-node typescript
+
+# Create certs directory
+RUN mkdir -p /certs
+
+# QUIC UDP port
+EXPOSE 4433/udp
+
+# Environment defaults
+ENV AGENTIC_FLOW_ENABLE_QUIC=true
+ENV QUIC_PORT=4433
+ENV QUIC_HOST=0.0.0.0
+ENV QUIC_CERT_PATH=/certs/cert.pem
+ENV QUIC_KEY_PATH=/certs/key.pem
+ENV QUIC_MAX_CONNECTIONS=100
+ENV QUIC_MAX_STREAMS=100
+ENV QUIC_VERIFY_PEER=false
+
+# Health check - QUIC doesn't support HTTP health checks natively
+# We rely on the container orchestrator or metrics endpoint
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+  CMD node -e "require('./dist/transport/quic').checkHealth()" || exit 1
+
+# Run the QUIC transport server
+CMD ["ts-node", "--esm", "src/transport/index.ts"]
